@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>かんがえの木</title>
+<style>
+  :root{
+    --bg:#FDF6E9; --ink:#4A3425; --teal:#1F7A6D; --teal-d:#155E53;
+    --amber:#C88C28; --red:#B03C32; --line:#96805F; --card:#FFFFFF;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden}
+  body{background:var(--bg);color:var(--ink);font-family:"Hiragino Maru Gothic ProN","Hiragino Sans","Noto Sans JP",sans-serif;touch-action:none}
+  #topbar{
+    position:fixed;top:0;left:0;right:0;height:56px;z-index:20;
+    display:flex;align-items:center;gap:7px;padding:0 10px;
+    background:rgba(253,246,233,.94);border-bottom:2px solid #EADFC8;
+  }
+  #topbar .title{font-size:17px;font-weight:800;flex:1;letter-spacing:.01em;white-space:nowrap;overflow:hidden}
+  #exp-dot{display:none;width:9px;height:9px;border-radius:50%;background:#D43D2A;margin-left:5px;vertical-align:2px}
+  .tbtn{
+    border:2px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:7px 12px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;
+  }
+  .tbtn:active{background:#F1E6CF}
+  #stage{position:fixed;inset:0;top:56px}
+  svg{width:100%;height:100%;display:block}
+  .edge{stroke:var(--line);stroke-width:2.5;fill:none;opacity:.75}
+  .edge.focus-edge{stroke:var(--teal);stroke-width:3.5;opacity:.9}
+  .node{cursor:pointer}
+  .node ellipse{stroke:var(--line);stroke-width:2.5}
+  .node.root ellipse{stroke:var(--teal-d);stroke-width:3.5}
+  .node.sel ellipse{stroke:#E4572E;stroke-width:4}
+  .node text{pointer-events:none;font-weight:700;fill:var(--ink)}
+  .node.root text{fill:#fff}
+  .node.cut text{fill:#8a8a8a}
+  .badge text{pointer-events:none;font-weight:800;fill:#fff}
+  .cnt text{pointer-events:none;font-weight:700;fill:#fff;font-size:14px}
+  /* bottom sheet */
+  #sheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--card);
+    border-top:3px solid #EADFC8;border-radius:20px 20px 0 0;padding:14px 14px 20px;
+    box-shadow:0 -6px 24px rgba(74,52,37,.18);
+    transform:translateY(110%);transition:transform .22s ease;
+  }
+  #sheet.open{transform:translateY(0)}
+  #sheet .row{display:flex;gap:8px;align-items:center}
+  #txt{
+    flex:1;font-size:17px;padding:11px 12px;border:2px solid var(--line);border-radius:12px;
+    font-family:inherit;color:var(--ink);background:#FFFDF6;min-width:0;
+  }
+  .abtn{
+    border:2px solid var(--line);background:#FFFDF6;color:var(--ink);
+    border-radius:12px;padding:11px 10px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;
+  }
+  .abtn:active{transform:scale(.96)}
+  #marks{margin-top:10px}
+  .mbtn{flex:1;padding:12px 4px;font-size:16px;border-radius:12px}
+  .mbtn.keep{border-color:var(--teal);color:var(--teal-d)}
+  .mbtn.hold{border-color:var(--amber);color:#96660f}
+  .mbtn.cut{border-color:var(--red);color:var(--red)}
+  .mbtn.on-keep{background:var(--teal);color:#fff}
+  .mbtn.on-hold{background:var(--amber);color:#fff}
+  .mbtn.on-cut{background:var(--red);color:#fff}
+  #sub{margin-top:10px}
+  .abtn.sub{flex:1}
+  .abtn.danger{border-color:var(--red);color:var(--red)}
+  /* overlays */
+  .overlay{
+    position:fixed;inset:0;z-index:40;background:rgba(40,28,18,.45);
+    display:none;align-items:center;justify-content:center;padding:22px;
+  }
+  .overlay.open{display:flex}
+  .overlay .box{background:var(--card);border-radius:18px;padding:22px;max-width:430px;width:100%;line-height:1.75;font-size:15px;max-height:86vh;overflow:auto}
+  .overlay h2{font-size:19px;margin-bottom:8px}
+  .overlay .close{margin-top:14px;width:100%}
+  .trow{
+    display:flex;align-items:center;gap:8px;border:2px solid #EADFC8;border-radius:12px;
+    padding:10px 12px;margin-top:8px;background:#FFFDF6;
+  }
+  .trow.cur{border-color:var(--teal);background:#EAF6F2}
+  .trow .nm{flex:1;font-weight:800;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .trow .dt{font-size:12px;color:#8a7a5f}
+  .sbtn{border:2px solid var(--line);background:#fff;border-radius:10px;padding:6px 10px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap}
+  .sbtn.danger{border-color:var(--red);color:var(--red)}
+  .wide{width:100%;margin-top:10px}
+  #hint{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:14px;z-index:10;
+    background:rgba(74,52,37,.85);color:#FFF6E3;font-size:13px;padding:7px 14px;border-radius:999px;
+    pointer-events:none;white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div class="title">🌳 かんがえの木</div>
+  <button class="tbtn" id="btn-export-top">書き出し<span id="exp-dot"></span></button>
+  <button class="tbtn" id="btn-trees">一覧</button>
+  <button class="tbtn" id="btn-home">全体</button>
+  <button class="tbtn" id="btn-help">？</button>
+</div>
+<div id="stage"><svg id="svg"></svg></div>
+<div id="hint">丸をタップすると、枝を足したり判定できます</div>
+
+<div id="sheet">
+  <div class="row">
+    <input id="txt" type="text" placeholder="ことばを入れる">
+    <button class="abtn" id="btn-add">＋ 枝を足す</button>
+  </div>
+  <div class="row" id="marks">
+    <button class="abtn mbtn keep" data-mark="keep">◎ 残す</button>
+    <button class="abtn mbtn hold" data-mark="hold">△ 保留</button>
+    <button class="abtn mbtn cut" data-mark="cut">✕ 刈る</button>
+  </div>
+  <div class="row" id="sub">
+    <button class="abtn sub" id="btn-focus">中心に置く</button>
+    <button class="abtn sub danger" id="btn-del">消す</button>
+    <button class="abtn sub" id="btn-close">閉じる</button>
+  </div>
+</div>
+
+<div class="overlay" id="help">
+  <div class="box">
+    <h2>🌳 かんがえの木 の使い方</h2>
+    <p>・真ん中の丸がテーマ。丸をタップすると下に道具が出ます。</p>
+    <p>・「＋ 枝を足す」で枝を伸ばします。枝の丸から、さらに枝を伸ばせます。</p>
+    <p>・判定は3つ：<b>◎残す</b>／<b>△保留</b>／<b>✕刈る</b>。もう一度押すと取り消し。</p>
+    <p>・✕を付けた枝は畳まれて隠れ、中心の丸がその側の端に寄って、伸びる側が広くなります。</p>
+    <p>・「中心に置く」で、その枝を真ん中に大きく表示。「全体」で戻ります。</p>
+    <p>・木は「一覧」から何本か作って切り替えられます。</p>
+    <p>・内容はこの端末に自動保存されます。大事な木は「一覧」の「バックアップを書き出す」でファイルに残せます（しまう工房と同じ考え方）。</p>
+    <button class="abtn close" id="btn-help-close">閉じる</button>
+  </div>
+</div>
+
+<div class="overlay" id="trees">
+  <div class="box">
+    <h2>🌳 木の一覧</h2>
+    <div id="tree-list"></div>
+    <button class="abtn wide" id="btn-new-tree">＋ 新しい木を作る</button>
+    <button class="abtn wide" id="btn-export">バックアップを書き出す</button>
+    <button class="abtn wide" id="btn-import">バックアップを読み込む</button>
+    <input type="file" id="file-import" accept=".json,application/json" style="display:none">
+    <button class="abtn wide" id="btn-seed" style="border-color:var(--red);color:var(--red)">今の木を最初の例に戻す</button>
+    <button class="abtn close" id="btn-trees-close">閉じる</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* ---------- data (multiple trees + backup) ---------- */
+const KEY2 = 'kangaenoki_v2';
+const KEY1 = 'kangaenoki_v1';
+let uid = 1;
+let treeSeq = 1;
+function N(text, mark, children){ return { id: uid++, text, mark: mark||null, children: children||[] }; }
+function seedTree(){
+  uid = 1;
+  return N('新作スタンプ', null, [
+    N('テーマ', null, [ N('推し活'), N('日常'), N('季節もの') ]),
+    N('宣伝', 'keep', [ N('インスタ'), N('Pinterest'), N('LINE公式','hold') ]),
+    N('販売', null, [ N('価格'), N('出す時期') ]),
+    N('チラシ', 'cut', [ N('置き場所') ]),
+  ]);
+}
+function blankTree(){
+  uid = 1;
+  return N('テーマ', null, []);
+}
+/* store: { trees:[{tid, root, uid, updated}], cur: tid } */
+let store = null;
+let root = null;
+function persist(){
+  const t = store.trees.find(t=> t.tid === store.cur);
+  if(t){ t.root = root; t.uid = uid; t.updated = Date.now(); }
+  try{ localStorage.setItem(KEY2, JSON.stringify(store)); }catch(e){}
+  refreshExportDot();
+}
+function refreshExportDot(){
+  const dot = document.getElementById('exp-dot');
+  if(!dot || !store) return;
+  let last = 0;
+  try{ last = +localStorage.getItem('kangaenoki_lastexport') || 0; }catch(e){}
+  const dirty = store.trees.some(t=> (t.updated || 0) > last);
+  dot.style.display = dirty ? 'inline-block' : 'none';
+}
+function save(){ persist(); }
+function loadStore(){
+  try{
+    const s = localStorage.getItem(KEY2);
+    if(s){
+      const d = JSON.parse(s);
+      if(d && d.trees && d.trees.length){
+        store = d;
+        const t = store.trees.find(t=> t.tid === store.cur) || store.trees[0];
+        store.cur = t.tid; root = t.root; uid = t.uid || 1000;
+        treeSeq = store.trees.reduce((m,t)=> Math.max(m, t.tid), 0) + 1;
+        return;
+      }
+    }
+  }catch(e){}
+  // v1 migration
+  try{
+    const s1 = localStorage.getItem(KEY1);
+    if(s1){
+      const d1 = JSON.parse(s1);
+      if(d1 && d1.root){
+        root = d1.root; uid = d1.uid || 1000;
+        store = { trees: [{ tid: 1, root, uid, updated: Date.now() }], cur: 1 };
+        treeSeq = 2; persist(); return;
+      }
+    }
+  }catch(e){}
+  root = seedTree();
+  store = { trees: [{ tid: 1, root, uid, updated: Date.now() }], cur: 1 };
+  treeSeq = 2; persist();
+}
+loadStore();
+function switchTree(tid){
+  persist();
+  const t = store.trees.find(t=> t.tid === tid);
+  if(!t) return;
+  store.cur = tid; root = t.root; uid = t.uid || 1000;
+  focusId = null; selId = null;
+  sheet.classList.remove('open');
+  persist(); fitView();
+}
+function newTree(){
+  persist();
+  root = blankTree();
+  const tid = treeSeq++;
+  store.trees.push({ tid, root, uid, updated: Date.now() });
+  store.cur = tid;
+  focusId = null; selId = null;
+  sheet.classList.remove('open');
+  persist(); fitView();
+  select(root.id);
+}
+function deleteTree(tid){
+  if(store.trees.length <= 1){ alert('最後の1本は消せません'); return; }
+  const t = store.trees.find(t=> t.tid === tid);
+  if(!confirm('「' + (t.root.text || 'テーマ') + '」の木を消しますか？')) return;
+  store.trees = store.trees.filter(t=> t.tid !== tid);
+  if(store.cur === tid){
+    const nt = store.trees[0];
+    store.cur = nt.tid; root = nt.root; uid = nt.uid || 1000;
+    focusId = null; selId = null; sheet.classList.remove('open');
+  }
+  persist(); renderTreeList(); fitView();
+}
+
+/* ---------- tree helpers ---------- */
+function find(id, node){
+  node = node || root;
+  if(node.id === id) return node;
+  for(const c of node.children){ const r = find(id, c); if(r) return r; }
+  return null;
+}
+function parentOf(id, node, par){
+  node = node || root; par = par || null;
+  if(node.id === id) return par;
+  for(const c of node.children){ const r = parentOf(id, c, node); if(r) return r; }
+  return null;
+}
+function countAll(node){ let n = 0; for(const c of node.children) n += 1 + countAll(c); return n; }
+function weight(node){
+  if(node.mark === 'cut') return 0.16;
+  if(!node.children.length) return 1;
+  return node.children.reduce((s,c)=> s + weight(c), 0);
+}
+
+/* ---------- layout (whole view) ---------- */
+const pos = new Map();
+function layoutWhole(){
+  pos.clear();
+  const drift = driftVector();
+  place(root, -Math.PI/2, Math.PI*1.5, 0, drift.x, drift.y);
+  (function walk(node, a0, a1, depth, cx, cy){
+    const kids = node.children;
+    if(!kids.length) return;
+    const total = kids.reduce((s,c)=> s + weight(c), 0) || 1;
+    let a = a0;
+    for(const c of kids){
+      const span = (a1 - a0) * (weight(c) / total);
+      const mid = a + span/2;
+      const r = 168;
+      const x = cx + Math.cos(mid) * r, y = cy + Math.sin(mid) * r;
+      place(c, a, a+span, depth+1, x, y);
+      if(c.mark !== 'cut') walk(c, a, a+span, depth+1, x, y);
+      a += span;
+    }
+  })(root, -Math.PI/2, Math.PI*1.5, 0, drift.x, drift.y);
+}
+function place(node, a0, a1, depth, x, y){
+  pos.set(node.id, { x, y, angle:(a0+a1)/2, depth, node });
+}
+function driftVector(){
+  let vx = 0, vy = 0, n = 0;
+  const kids = root.children;
+  kids.forEach((c, i)=>{
+    if(c.mark === 'cut'){
+      const ang = (i + 0.5) / Math.max(kids.length,1) * Math.PI * 2 - Math.PI/2;
+      vx += Math.cos(ang); vy += Math.sin(ang); n++;
+    }
+  });
+  if(!n) return { x:0, y:0 };
+  const len = Math.hypot(vx, vy) || 1;
+  const mag = Math.min(95, 36 * n);
+  return { x: vx/len*mag, y: vy/len*mag };
+}
+
+/* ---------- layout (focus view) ---------- */
+let focusId = null;
+function layoutFocus(){
+  pos.clear();
+  const f = find(focusId);
+  if(!f){ focusId = null; layoutWhole(); return; }
+  place(f, 0, Math.PI*2, 0, 0, 0);
+  const par = parentOf(f.id);
+  if(par) place(par, Math.PI, Math.PI, -1, -215, 0);
+  const kids = f.children;
+  const total = kids.reduce((s,c)=> s + weight(c), 0) || 1;
+  let a = -Math.PI/2;
+  for(const c of kids){
+    const s = Math.PI * 2 * (weight(c)/total);
+    const mid = a + s/2;
+    place(c, a, a+s, 1, Math.cos(mid)*195, Math.sin(mid)*195);
+    a += s;
+  }
+}
+function relayoutRaw(){ if(focusId) layoutFocus(); else layoutWhole(); }
+
+/* ---------- rendering ---------- */
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+let view = { s: 1, tx: 0, ty: 0 };
+let selId = null;
+
+function textLines(t){
+  const out = [];
+  String(t||'').split('\n').forEach(seg=>{
+    while(seg.length > 6){ out.push(seg.slice(0,6)); seg = seg.slice(6); }
+    out.push(seg);
+  });
+  if(out.length > 3){ const r = out.slice(0,3); r[2] = r[2].slice(0,5) + '…'; return r; }
+  return out.length ? out : [''];
+}
+function nodeSize(node, depth){
+  const lines = textLines(node.text);
+  const longest = Math.max(...lines.map(l=>l.length), 1);
+  let rx = Math.max(58, longest * 15.5 + 28);
+  let ry = 34 + (lines.length - 1) * 14;
+  if(depth === 0){ rx *= 1.15; ry *= 1.15; }
+  if(node.mark === 'cut'){ rx *= 0.68; ry *= 0.68; }
+  return { rx, ry, lines };
+}
+function el(tag, attrs){
+  const e = document.createElementNS(NS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+function render(){
+  const W = svg.clientWidth, H = svg.clientHeight;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = '';
+  const g = el('g', { transform: `translate(${view.tx},${view.ty}) scale(${view.s})` });
+  svg.appendChild(g);
+  pos.forEach(p=>{
+    p.node.children.forEach(c=>{
+      const q = pos.get(c.id);
+      if(!q) return;
+      g.appendChild(el('line', { x1:p.x, y1:p.y, x2:q.x, y2:q.y, class:'edge' }));
+    });
+    if(focusId){
+      const par = parentOf(p.node.id);
+      if(par && pos.has(par.id)){
+        const q = pos.get(par.id);
+        g.appendChild(el('line', { x1:q.x, y1:q.y, x2:p.x, y2:p.y, class:'edge focus-edge' }));
+      }
+    }
+  });
+  const list = [...pos.values()].sort((a,b)=> a.depth - b.depth);
+  for(const p of list) drawNode(g, p);
+}
+function drawNode(g, p){
+  const node = p.node;
+  const { rx, ry, lines } = nodeSize(node, p.depth);
+  const isRootView = (node.id === root.id && !focusId);
+  const grp = el('g', { class: 'node' + (isRootView ? ' root' : '') + (node.mark==='cut' ? ' cut' : '') + (node.id===selId ? ' sel' : ''), 'data-id': node.id });
+  let fill = '#FFFFFF';
+  if(isRootView) fill = '#1F7A6D';
+  else if(focusId && node.id === focusId) fill = '#DFF0EB';
+  else if(node.mark === 'keep') fill = '#EAF6F2';
+  else if(node.mark === 'hold') fill = '#FBF3DF';
+  else if(node.mark === 'cut') fill = '#EDEDED';
+  grp.appendChild(el('ellipse', { cx: p.x, cy: p.y, rx, ry, fill }));
+  const fs = node.mark==='cut' ? 17 : (isRootView ? 22 : 20);
+  lines.forEach((ln, i)=>{
+    const t = el('text', { x: p.x, y: p.y + (i - (lines.length-1)/2) * (fs+4) + fs*0.36, 'text-anchor':'middle', 'font-size': fs });
+    t.textContent = ln;
+    grp.appendChild(t);
+  });
+  if(node.mark){
+    const bx = p.x + rx*0.78, by = p.y - ry*0.82;
+    const colors = { keep:'#1F7A6D', hold:'#C88C28', cut:'#B03C32' };
+    const glyphs = { keep:'◎', hold:'△', cut:'✕' };
+    const bg = el('g', { class:'badge' });
+    bg.appendChild(el('circle', { cx: bx, cy: by, r: 14, fill: colors[node.mark] }));
+    const t = el('text', { x: bx, y: by + 6.5, 'text-anchor':'middle', 'font-size': 16 });
+    t.textContent = glyphs[node.mark];
+    bg.appendChild(t);
+    grp.appendChild(bg);
+  }
+  const hidden = (node.mark==='cut') ? countAll(node) : (focusId ? countAll(node) : 0);
+  if(hidden > 0){
+    const bx = p.x + rx*0.8, by = p.y + ry*0.85;
+    const bg = el('g', { class:'cnt' });
+    bg.appendChild(el('circle', { cx: bx, cy: by, r: 13, fill: '#8a7a5f' }));
+    const t = el('text', { x: bx, y: by + 5, 'text-anchor':'middle' });
+    t.textContent = '+' + hidden;
+    bg.appendChild(t);
+    grp.appendChild(bg);
+  }
+  grp.addEventListener('pointerup', ev => {
+    if(moved) return;
+    select(node.id);
+  });
+  g.appendChild(grp);
+}
+
+/* ---------- view control ---------- */
+function fitView(){
+  relayoutRaw();
+  const pts = [...pos.values()];
+  if(!pts.length) return;
+  let minX=1e9, maxX=-1e9, minY=1e9, maxY=-1e9;
+  pts.forEach(p=>{
+    const { rx, ry } = nodeSize(p.node, p.depth);
+    minX = Math.min(minX, p.x - rx); maxX = Math.max(maxX, p.x + rx);
+    minY = Math.min(minY, p.y - ry); maxY = Math.max(maxY, p.y + ry);
+  });
+  const W = svg.clientWidth, H = svg.clientHeight;
+  const bw = Math.max(maxX-minX, 1), bh = Math.max(maxY-minY, 1);
+  let s = Math.min(W/(bw+46), H/(bh+46), 1.7);
+  s = Math.max(s, 0.7); /* 文字が読める大きさを下限にする */
+  view.s = s;
+  view.tx = W/2 - (minX+bw/2)*s;
+  view.ty = H/2 - (minY+bh/2)*s;
+  render();
+}
+
+/* pan & pinch */
+let pointers = new Map();
+let moved = false, pinchD = 0;
+const stage = document.getElementById('stage');
+stage.addEventListener('pointerdown', ev=>{
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  moved = false;
+  if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    pinchD = Math.hypot(a.x-b.x, a.y-b.y);
+  }
+});
+stage.addEventListener('pointermove', ev=>{
+  if(!pointers.has(ev.pointerId)) return;
+  const prev = pointers.get(ev.pointerId);
+  const dx = ev.clientX - prev.x, dy = ev.clientY - prev.y;
+  pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+  if(Math.abs(dx) + Math.abs(dy) > 2) moved = true;
+  if(pointers.size === 1 && moved){
+    view.tx += dx; view.ty += dy; render();
+  } else if(pointers.size === 2){
+    const [a,b] = [...pointers.values()];
+    const d = Math.hypot(a.x-b.x, a.y-b.y);
+    if(pinchD){
+      const cx = (a.x+b.x)/2, cy = (a.y+b.y)/2 - 56;
+      zoomAt(cx, cy, d/pinchD);
+    }
+    pinchD = d; moved = true;
+  }
+});
+function endPointer(ev){ pointers.delete(ev.pointerId); if(pointers.size<2) pinchD = 0; setTimeout(()=> moved=false, 0); }
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+stage.addEventListener('wheel', ev=>{
+  ev.preventDefault();
+  zoomAt(ev.clientX, ev.clientY - 56, ev.deltaY < 0 ? 1.1 : 0.9);
+}, { passive:false });
+function zoomAt(cx, cy, f){
+  const ns = Math.min(3.4, Math.max(0.3, view.s * f));
+  const k = ns / view.s;
+  view.tx = cx - (cx - view.tx) * k;
+  view.ty = cy - (cy - view.ty) * k;
+  view.s = ns;
+  render();
+}
+
+/* ---------- selection & sheet ---------- */
+const sheet = document.getElementById('sheet');
+const txt = document.getElementById('txt');
+const hint = document.getElementById('hint');
+function select(id){
+  selId = id;
+  const node = find(id);
+  if(!node) return;
+  txt.value = node.text;
+  refreshMarks();
+  document.getElementById('btn-focus').textContent = focusId === id ? '全体に戻る' : '中心に置く';
+  sheet.classList.add('open');
+  hint.style.display = 'none';
+  render();
+}
+function closeSheet(){ sheet.classList.remove('open'); selId = null; render(); }
+function refreshMarks(){
+  const node = find(selId);
+  document.querySelectorAll('.mbtn').forEach(b=>{
+    b.classList.toggle('on-' + b.dataset.mark, !!node && node.mark === b.dataset.mark);
+  });
+}
+txt.addEventListener('input', ()=>{
+  const node = find(selId);
+  if(node){ node.text = txt.value; save(); render(); }
+});
+document.getElementById('btn-add').addEventListener('click', ()=>{
+  const par = find(selId) || root;
+  if(par.mark === 'cut') par.mark = null;
+  const c = N('新しい枝');
+  par.children.push(c);
+  save();
+  fitView();
+  select(c.id);
+  txt.focus(); txt.select();
+});
+document.querySelectorAll('.mbtn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    const node = find(selId);
+    if(!node) return;
+    node.mark = (node.mark === b.dataset.mark) ? null : b.dataset.mark;
+    save(); refreshMarks(); fitView();
+  });
+});
+document.getElementById('btn-focus').addEventListener('click', ()=>{
+  if(selId == null) return;
+  focusId = (focusId === selId) ? null : selId;
+  closeSheet(); fitView();
+});
+document.getElementById('btn-del').addEventListener('click', ()=>{
+  const node = find(selId);
+  if(!node) return;
+  if(node.id === root.id){ alert('中心の丸は消せません'); return; }
+  if(!confirm('「' + node.text + '」と、その下の枝を全部消しますか？')) return;
+  const par = parentOf(node.id);
+  par.children = par.children.filter(c=> c.id !== node.id);
+  if(focusId === node.id) focusId = null;
+  save(); closeSheet(); fitView();
+});
+document.getElementById('btn-close').addEventListener('click', closeSheet);
+document.getElementById('btn-home').addEventListener('click', ()=>{ focusId = null; closeSheet(); fitView(); });
+document.getElementById('btn-help').addEventListener('click', ()=> document.getElementById('help').classList.add('open'));
+document.getElementById('btn-help-close').addEventListener('click', ()=> document.getElementById('help').classList.remove('open'));
+document.getElementById('help').addEventListener('click', ev=>{ if(ev.target.id === 'help') ev.target.classList.remove('open'); });
+
+/* ---------- trees panel / backup ---------- */
+const treesEl = document.getElementById('trees');
+function fmtDate(ts){
+  const d = new Date(ts);
+  return (d.getMonth()+1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
+function renderTreeList(){
+  persist();
+  const box = document.getElementById('tree-list');
+  box.innerHTML = '';
+  store.trees.forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'trow' + (t.tid === store.cur ? ' cur' : '');
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = t.root.text || 'テーマ';
+    const dt = document.createElement('div');
+    dt.className = 'dt';
+    dt.textContent = fmtDate(t.updated || Date.now());
+    const open = document.createElement('button');
+    open.className = 'sbtn'; open.textContent = t.tid === store.cur ? '開いてる' : '開く';
+    open.addEventListener('click', ()=>{ switchTree(t.tid); treesEl.classList.remove('open'); });
+    const del = document.createElement('button');
+    del.className = 'sbtn danger'; del.textContent = '消す';
+    del.addEventListener('click', ()=> deleteTree(t.tid));
+    row.appendChild(nm); row.appendChild(dt); row.appendChild(open); row.appendChild(del);
+    box.appendChild(row);
+  });
+}
+document.getElementById('btn-trees').addEventListener('click', ()=>{ renderTreeList(); treesEl.classList.add('open'); });
+document.getElementById('btn-trees-close').addEventListener('click', ()=> treesEl.classList.remove('open'));
+treesEl.addEventListener('click', ev=>{ if(ev.target.id === 'trees') treesEl.classList.remove('open'); });
+document.getElementById('btn-new-tree').addEventListener('click', ()=>{ newTree(); treesEl.classList.remove('open'); });
+document.getElementById('btn-seed').addEventListener('click', ()=>{
+  if(!confirm('今開いている木を、最初の例に戻しますか？（作った内容は消えます）')) return;
+  root = seedTree(); focusId = null; save(); closeSheet(); treesEl.classList.remove('open'); fitView();
+});
+function doExport(){
+  persist();
+  const data = JSON.stringify({ app:'kangaenoki', ver:2, trees: store.trees }, null, 1);
+  const blob = new Blob([data], { type:'application/json' });
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = URL.createObjectURL(blob);
+  a.download = 'kangaenoki-backup-' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '.json';
+  a.click();
+  setTimeout(()=> URL.revokeObjectURL(a.href), 4000);
+  try{ localStorage.setItem('kangaenoki_lastexport', String(Date.now())); }catch(e){}
+  refreshExportDot();
+}
+document.getElementById('btn-export').addEventListener('click', doExport);
+document.getElementById('btn-export-top').addEventListener('click', doExport);
+const fileImport = document.getElementById('file-import');
+document.getElementById('btn-import').addEventListener('click', ()=> fileImport.click());
+fileImport.addEventListener('change', ()=>{
+  const f = fileImport.files[0];
+  if(!f) return;
+  const r = new FileReader();
+  r.onload = ()=>{
+    try{
+      const d = JSON.parse(r.result);
+      if(!d || !Array.isArray(d.trees) || !d.trees.length || !d.trees[0].root) throw new Error('bad');
+      if(!confirm('バックアップを読み込みます。今の木は置き換わります。よろしいですか？')) return;
+      store = { trees: d.trees, cur: d.trees[0].tid };
+      treeSeq = store.trees.reduce((m,t)=> Math.max(m, t.tid), 0) + 1;
+      const t = store.trees[0];
+      root = t.root; uid = t.uid || 1000;
+      focusId = null; selId = null; sheet.classList.remove('open');
+      persist(); renderTreeList(); fitView();
+      alert('読み込みました');
+    }catch(e){ alert('読み込めませんでした。ファイルを確認してください'); }
+    fileImport.value = '';
+  };
+  r.readAsText(f);
+});
+
+/* ---------- start ---------- */
+window.addEventListener('resize', ()=> render());
+fitView();
+</script>
+</body>
+</html>
