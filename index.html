@@ -134,6 +134,8 @@
     <p>・「中心に置く」で、その枝を真ん中に大きく表示。「全体」で戻ります。</p>
     <p>・木は「一覧」から何本か作って切り替えられます。</p>
     <p>・内容はこの端末に自動保存されます。大事な木は「一覧」の「バックアップを書き出す」でファイルに残せます（しまう工房と同じ考え方）。</p>
+    <p>・大枝ごとに色が付きます（色は自動です）。子枝は同じ色を引き継ぐので、広がっても系統が分かります。</p>
+    <button class="abtn wide" id="btn-color-mode">枝の色：入</button>
     <button class="abtn close" id="btn-help-close">閉じる</button>
   </div>
 </div>
@@ -254,6 +256,44 @@ function deleteTree(tid){
   persist(); renderTreeList(); fitView();
 }
 
+/* ---------- branch colors (auto pastel per main branch) ---------- */
+const PALETTE = [
+  { f:'#F6D9CE', d:'#C97B5E' },
+  { f:'#F9E3AE', d:'#BE9435' },
+  { f:'#DCE8C8', d:'#87A05E' },
+  { f:'#C9E6DD', d:'#4E9A86' },
+  { f:'#C9DFF2', d:'#5B8DB8' },
+  { f:'#DCD4F2', d:'#8577C2' },
+  { f:'#F4D2E0', d:'#C06A92' },
+  { f:'#EBDCC4', d:'#AC8750' },
+];
+let colorMode = 'on';
+try{ if(localStorage.getItem('kangaenoki_color') === 'off') colorMode = 'off'; }catch(e){}
+function ensureBranchColors(){
+  if(!root) return;
+  const used = new Set();
+  root.children.forEach(c=>{ if(c.c != null) used.add(c.c); });
+  root.children.forEach((c, i)=>{
+    if(c.c == null){
+      let cand = i % PALETTE.length;
+      let guard = 0;
+      while(used.has(cand) && guard++ < PALETTE.length) cand = (cand + 1) % PALETTE.length;
+      c.c = cand; used.add(cand);
+    }
+  });
+}
+let curBranch = new Map();
+function computeBranchMap(){
+  const map = new Map();
+  if(!root) return map;
+  root.children.forEach(ch=>{
+    if(ch.c == null) return;
+    (function walk(n){ map.set(n.id, ch.c); n.children.forEach(walk); })(ch);
+  });
+  return map;
+}
+ensureBranchColors();
+
 /* ---------- tree helpers ---------- */
 function find(id, node){
   node = node || root;
@@ -365,6 +405,8 @@ function el(tag, attrs){
   return e;
 }
 function render(){
+  ensureBranchColors();
+  curBranch = computeBranchMap();
   const W = svg.clientWidth, H = svg.clientHeight;
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.innerHTML = '';
@@ -374,7 +416,12 @@ function render(){
     p.node.children.forEach(c=>{
       const q = pos.get(c.id);
       if(!q) return;
-      g.appendChild(el('line', { x1:p.x, y1:p.y, x2:q.x, y2:q.y, class:'edge' }));
+      const ln = el('line', { x1:p.x, y1:p.y, x2:q.x, y2:q.y, class:'edge' });
+      if(colorMode === 'on' && !focusId){
+        const ci = curBranch.get(c.id);
+        if(ci !== undefined) ln.style.stroke = PALETTE[ci].d;
+      }
+      g.appendChild(ln);
     });
     if(focusId){
       const par = parentOf(p.node.id);
@@ -393,12 +440,20 @@ function drawNode(g, p){
   const isRootView = (node.id === root.id && !focusId);
   const grp = el('g', { class: 'node' + (isRootView ? ' root' : '') + (node.mark==='cut' ? ' cut' : '') + (node.id===selId ? ' sel' : ''), 'data-id': node.id });
   let fill = '#FFFFFF';
+  let strokeCol = null;
+  const bIdx = (colorMode === 'on') ? curBranch.get(node.id) : undefined;
   if(isRootView) fill = '#1F7A6D';
+  else if(node.mark === 'cut') fill = '#EDEDED';
+  else if(bIdx !== undefined){ fill = PALETTE[bIdx].f; strokeCol = PALETTE[bIdx].d; }
   else if(focusId && node.id === focusId) fill = '#DFF0EB';
   else if(node.mark === 'keep') fill = '#EAF6F2';
   else if(node.mark === 'hold') fill = '#FBF3DF';
-  else if(node.mark === 'cut') fill = '#EDEDED';
-  grp.appendChild(el('ellipse', { cx: p.x, cy: p.y, rx, ry, fill }));
+  const ell = el('ellipse', { cx: p.x, cy: p.y, rx, ry, fill });
+  if(strokeCol && node.id !== selId){
+    ell.style.stroke = strokeCol;
+    if(focusId && node.id === focusId) ell.style.strokeWidth = '4';
+  }
+  grp.appendChild(ell);
   const fs = node.mark==='cut' ? 17 : (isRootView ? 22 : 20);
   lines.forEach((ln, i)=>{
     const t = el('text', { x: p.x, y: p.y + (i - (lines.length-1)/2) * (fs+4) + fs*0.36, 'text-anchor':'middle', 'font-size': fs });
@@ -563,6 +618,14 @@ document.getElementById('btn-close').addEventListener('click', closeSheet);
 document.getElementById('btn-home').addEventListener('click', ()=>{ focusId = null; closeSheet(); fitView(); });
 document.getElementById('btn-help').addEventListener('click', ()=> document.getElementById('help').classList.add('open'));
 document.getElementById('btn-help-close').addEventListener('click', ()=> document.getElementById('help').classList.remove('open'));
+const btnColorMode = document.getElementById('btn-color-mode');
+function refreshColorBtn(){ btnColorMode.textContent = '枝の色：' + (colorMode === 'on' ? '入' : '切'); }
+btnColorMode.addEventListener('click', ()=>{
+  colorMode = (colorMode === 'on') ? 'off' : 'on';
+  try{ localStorage.setItem('kangaenoki_color', colorMode); }catch(e){}
+  refreshColorBtn(); render();
+});
+refreshColorBtn();
 document.getElementById('help').addEventListener('click', ev=>{ if(ev.target.id === 'help') ev.target.classList.remove('open'); });
 
 /* ---------- trees panel / backup ---------- */
