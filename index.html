@@ -132,6 +132,7 @@
     <p>・判定は3つ：<b>◎残す</b>／<b>△保留</b>／<b>✕刈る</b>。もう一度押すと取り消し。</p>
     <p>・✕を付けた枝は畳まれて隠れ、中心の丸がその側の端に寄って、伸びる側が広くなります。</p>
     <p>・「中心に置く」で、その枝を真ん中に大きく表示。「全体」で戻ります。</p>
+    <p>・枝はドラッグで動かせます。別の丸に重ねて離すと、その枝の下に移ります。空いた場所で離すと、まわりの並び順が変わります。</p>
     <p>・木は「一覧」から何本か作って切り替えられます。</p>
     <p>・内容はこの端末に自動保存されます。大事な木は「一覧」の「バックアップを書き出す」でファイルに残せます（しまう工房と同じ考え方）。</p>
     <p>・大枝ごとに色が付きます（色は自動です）。子枝は同じ色を引き継ぐので、広がっても系統が分かります。</p>
@@ -324,11 +325,15 @@ function layoutWhole(){
     const kids = node.children;
     if(!kids.length) return;
     const total = kids.reduce((s,c)=> s + weight(c), 0) || 1;
+    // 兄弟が多い・幅が広い・割り当て角度が狭いときは、リングの半径を広げて重なりを減らす
+    let need = 0;
+    kids.forEach(c=>{ need += nodeSize(c, depth+1).rx * 2 + 18; });
+    const spanAll = Math.max(a1 - a0, 0.12);
+    const r = Math.min(430, Math.max(168, need / spanAll * 0.9));
     let a = a0;
     for(const c of kids){
       const span = (a1 - a0) * (weight(c) / total);
       const mid = a + span/2;
-      const r = 168;
       const x = cx + Math.cos(mid) * r, y = cy + Math.sin(mid) * r;
       place(c, a, a+span, depth+1, x, y);
       if(c.mark !== 'cut') walk(c, a, a+span, depth+1, x, y);
@@ -365,11 +370,14 @@ function layoutFocus(){
   if(par) place(par, Math.PI, Math.PI, -1, -215, 0);
   const kids = f.children;
   const total = kids.reduce((s,c)=> s + weight(c), 0) || 1;
+  let needF = 0;
+  kids.forEach(c=>{ needF += nodeSize(c, 1).rx * 2 + 18; });
+  const rf = Math.min(400, Math.max(195, needF / (Math.PI * 2)));
   let a = -Math.PI/2;
   for(const c of kids){
     const s = Math.PI * 2 * (weight(c)/total);
     const mid = a + s/2;
-    place(c, a, a+s, 1, Math.cos(mid)*195, Math.sin(mid)*195);
+    place(c, a, a+s, 1, Math.cos(mid)*rf, Math.sin(mid)*rf);
     a += s;
   }
 }
@@ -481,11 +489,131 @@ function drawNode(g, p){
     bg.appendChild(t);
     grp.appendChild(bg);
   }
+  grp.addEventListener('pointerdown', ev => {
+    if(node.id === root.id) return;
+    ev.stopPropagation();
+    beginNodeDrag(ev, node.id, grp);
+  });
   grp.addEventListener('pointerup', ev => {
+    if(dragState && dragState.active) return;
     if(moved) return;
     select(node.id);
   });
   g.appendChild(grp);
+}
+
+/* ---------- drag to move branches ---------- */
+let dragState = null;
+let dropTargetId = null;
+let hlId = null;
+function svgPoint(ev){
+  const r = svg.getBoundingClientRect();
+  return { x: (ev.clientX - r.left - view.tx) / view.s, y: (ev.clientY - r.top - view.ty) / view.s };
+}
+function beginNodeDrag(ev, id, grp){
+  const base = pos.get(id);
+  if(!base) return;
+  const p0 = svgPoint(ev);
+  dragState = { id, grp, sx: p0.x, sy: p0.y, dx: 0, dy: 0, active: false, bx: base.x, by: base.y };
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd, { once: true });
+  window.addEventListener('pointercancel', onDragCancel, { once: true });
+}
+function onDragMove(ev){
+  if(!dragState) return;
+  const p = svgPoint(ev);
+  dragState.dx = p.x - dragState.sx;
+  dragState.dy = p.y - dragState.sy;
+  if(!dragState.active && Math.hypot(dragState.dx, dragState.dy) > 7) dragState.active = true;
+  if(dragState.active){
+    dragState.grp.setAttribute('transform', 'translate(' + dragState.dx + ',' + dragState.dy + ')');
+    dragState.grp.style.opacity = '0.85';
+    updateDropTarget({ x: dragState.bx + dragState.dx, y: dragState.by + dragState.dy });
+  }
+}
+function updateDropTarget(center){
+  const dragNode = find(dragState.id);
+  if(!dragNode) return;
+  const banned = new Set();
+  (function collect(n){ banned.add(n.id); n.children.forEach(collect); })(dragNode);
+  let best = null, bestScore = 1.2;
+  pos.forEach(q=>{
+    if(banned.has(q.id)) return;
+    const sz = nodeSize(q.node, q.depth);
+    const s = Math.pow((center.x - q.x) / sz.rx, 2) + Math.pow((center.y - q.y) / sz.ry, 2);
+    if(s < bestScore){ bestScore = s; best = q.node.id; }
+  });
+  dropTargetId = best;
+  setHighlight(best);
+}
+function setHighlight(id){
+  if(hlId === id) return;
+  if(hlId != null){
+    const e = svg.querySelector('.node[data-id="' + hlId + '"] ellipse');
+    if(e){ e.style.stroke = ''; e.style.strokeWidth = ''; }
+  }
+  hlId = id;
+  if(id != null){
+    const e = svg.querySelector('.node[data-id="' + id + '"] ellipse');
+    if(e){ e.style.stroke = '#E4572E'; e.style.strokeWidth = '4.5'; }
+  }
+}
+function onDragEnd(){
+  window.removeEventListener('pointermove', onDragMove);
+  if(!dragState) return;
+  const ds = dragState;
+  dragState = null;
+  setHighlight(null);
+  if(ds.active) finishDrop(ds);
+}
+function onDragCancel(){
+  window.removeEventListener('pointermove', onDragMove);
+  if(dragState){
+    dragState.grp.removeAttribute('transform');
+    dragState.grp.style.opacity = '';
+  }
+  dragState = null;
+  dropTargetId = null;
+  setHighlight(null);
+}
+function angNorm(a, base){
+  let d = (a - base) % (Math.PI * 2);
+  if(d < 0) d += Math.PI * 2;
+  return d;
+}
+function finishDrop(ds){
+  const node = find(ds.id);
+  const par = parentOf(ds.id);
+  const targetId = dropTargetId;
+  dropTargetId = null;
+  if(!node || !par){ render(); return; }
+  if(targetId != null && targetId !== par.id){
+    const target = find(targetId);
+    if(target){
+      par.children = par.children.filter(c=> c.id !== node.id);
+      target.children.push(node);
+      if(target.mark === 'cut') target.mark = null;
+      save(); fitView();
+      return;
+    }
+  }
+  if(targetId === par.id){ render(); return; }
+  // 空いた場所に離した → 親のまわりの角度順で並び替え
+  const pp = pos.get(par.id);
+  if(!pp){ render(); return; }
+  const sibPos = par.children.map(sib=> pos.get(sib.id));
+  if(sibPos.some(sp=> !sp)){ render(); return; }
+  const baseAng = Math.atan2(sibPos[0].y - pp.y, sibPos[0].x - pp.x);
+  const dropA = angNorm(Math.atan2((ds.by + ds.dy) - pp.y, (ds.bx + ds.dx) - pp.x), baseAng);
+  const others = par.children.filter(c=> c.id !== node.id);
+  let insertAt = 0;
+  others.forEach(sib=>{
+    const sp = pos.get(sib.id);
+    if(angNorm(Math.atan2(sp.y - pp.y, sp.x - pp.x), baseAng) < dropA) insertAt++;
+  });
+  others.splice(insertAt, 0, node);
+  par.children = others;
+  save(); fitView();
 }
 
 /* ---------- view control ---------- */
@@ -502,7 +630,7 @@ function fitView(){
   const W = svg.clientWidth, H = svg.clientHeight;
   const bw = Math.max(maxX-minX, 1), bh = Math.max(maxY-minY, 1);
   let s = Math.min(W/(bw+46), H/(bh+46), 1.7);
-  s = Math.max(s, 0.7); /* 文字が読める大きさを下限にする */
+  s = Math.max(s, 0.5); /* 大きな木でも全体が入るように下限を緩める */
   view.s = s;
   view.tx = W/2 - (minX+bw/2)*s;
   view.ty = H/2 - (minY+bh/2)*s;
