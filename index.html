@@ -105,7 +105,7 @@
   <button class="tbtn" id="btn-help">？</button>
 </div>
 <div id="stage"><svg id="svg"></svg></div>
-<div id="hint">丸をタップすると、枝を足したり判定できます</div>
+<div id="hint">丸をタップすると真ん中に広がります</div>
 
 <div id="sheet">
   <div class="row">
@@ -127,8 +127,8 @@
 <div class="overlay" id="help">
   <div class="box">
     <h2>🌳 かんがえの木 の使い方</h2>
-    <p>・真ん中の丸がテーマ。丸をタップすると下に道具が出ます。</p>
-    <p>・「＋ 枝を足す」で枝を伸ばします。枝の丸から、さらに枝を伸ばせます。</p>
+    <p>・真ん中の丸がテーマ。丸をタップすると、その丸が真ん中に来て小枝が広がります。左に出る親の丸をタップすると一段戻ります。</p>
+    <p>・真ん中の丸をもう一度タップすると下に道具が出ます。「＋ 枝を足す」で枝を伸ばします。</p>
     <p>・判定は3つ：<b>◎残す</b>／<b>△保留</b>／<b>✕刈る</b>。もう一度押すと取り消し。</p>
     <p>・✕を付けた枝は畳まれて隠れ、中心の丸がその側の端に寄って、伸びる側が広くなります。</p>
     <p>・「中心に置く」で、その枝を真ん中に大きく表示。「全体」で戻ります。</p>
@@ -229,7 +229,7 @@ function switchTree(tid){
   const t = store.trees.find(t=> t.tid === tid);
   if(!t) return;
   store.cur = tid; root = t.root; uid = t.uid || 1000;
-  focusId = null; selId = null;
+  focusId = root.id; selId = null;
   sheet.classList.remove('open');
   persist(); fitView();
 }
@@ -239,7 +239,7 @@ function newTree(){
   const tid = treeSeq++;
   store.trees.push({ tid, root, uid, updated: Date.now() });
   store.cur = tid;
-  focusId = null; selId = null;
+  focusId = root.id; selId = null;
   sheet.classList.remove('open');
   persist(); fitView();
   select(root.id);
@@ -252,7 +252,7 @@ function deleteTree(tid){
   if(store.cur === tid){
     const nt = store.trees[0];
     store.cur = nt.tid; root = nt.root; uid = nt.uid || 1000;
-    focusId = null; selId = null; sheet.classList.remove('open');
+    focusId = root.id; selId = null; sheet.classList.remove('open');
   }
   persist(); renderTreeList(); fitView();
 }
@@ -445,7 +445,7 @@ function render(){
 function drawNode(g, p){
   const node = p.node;
   const { rx, ry, lines } = nodeSize(node, p.depth);
-  const isRootView = (node.id === root.id && !focusId);
+  const isRootView = (node.id === root.id);
   const grp = el('g', { class: 'node' + (isRootView ? ' root' : '') + (node.mark==='cut' ? ' cut' : '') + (node.id===selId ? ' sel' : ''), 'data-id': node.id });
   let fill = '#FFFFFF';
   let strokeCol = null;
@@ -497,9 +497,19 @@ function drawNode(g, p){
   grp.addEventListener('pointerup', ev => {
     if(dragState && dragState.active) return;
     if(moved) return;
-    select(node.id);
+    handleTap(node);
   });
   g.appendChild(grp);
+}
+
+/* タップの動き：小枝のある丸は真ん中に展開、真ん中の丸と葉は編集シート */
+function handleTap(node){
+  if(focusId === node.id){ select(node.id); return; }
+  if(!focusId && node.id === root.id){ select(node.id); return; }
+  if(!node.children.length){ select(node.id); return; }
+  focusId = node.id;
+  closeSheet();
+  fitView();
 }
 
 /* ---------- drag to move branches ---------- */
@@ -739,7 +749,7 @@ document.getElementById('btn-del').addEventListener('click', ()=>{
   if(!confirm('「' + node.text + '」と、その下の枝を全部消しますか？')) return;
   const par = parentOf(node.id);
   par.children = par.children.filter(c=> c.id !== node.id);
-  if(focusId === node.id) focusId = null;
+  if(focusId === node.id) focusId = par.id;
   save(); closeSheet(); fitView();
 });
 document.getElementById('btn-close').addEventListener('click', closeSheet);
@@ -791,7 +801,7 @@ treesEl.addEventListener('click', ev=>{ if(ev.target.id === 'trees') treesEl.cla
 document.getElementById('btn-new-tree').addEventListener('click', ()=>{ newTree(); treesEl.classList.remove('open'); });
 document.getElementById('btn-seed').addEventListener('click', ()=>{
   if(!confirm('今開いている木を、最初の例に戻しますか？（作った内容は消えます）')) return;
-  root = seedTree(); focusId = null; save(); closeSheet(); treesEl.classList.remove('open'); fitView();
+  root = seedTree(); focusId = root.id; save(); closeSheet(); treesEl.classList.remove('open'); fitView();
 });
 function doExport(){
   persist();
@@ -823,7 +833,7 @@ fileImport.addEventListener('change', ()=>{
       treeSeq = store.trees.reduce((m,t)=> Math.max(m, t.tid), 0) + 1;
       const t = store.trees[0];
       root = t.root; uid = t.uid || 1000;
-      focusId = null; selId = null; sheet.classList.remove('open');
+      focusId = root.id; selId = null; sheet.classList.remove('open');
       persist(); renderTreeList(); fitView();
       alert('読み込みました');
     }catch(e){ alert('読み込めませんでした。ファイルを確認してください'); }
@@ -834,6 +844,7 @@ fileImport.addEventListener('change', ()=>{
 
 /* ---------- start ---------- */
 window.addEventListener('resize', ()=> render());
+focusId = root.id;
 fitView();
 </script>
 </body>
